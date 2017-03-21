@@ -16,29 +16,25 @@ limitations under the License.
 
 package healthchecks
 
-import (
-	compute "google.golang.org/api/compute/v1"
-)
+import compute "google.golang.org/api/compute/v1"
 
-// healthCheckGetter retrieves health checks.
-type healthCheckGetter interface {
-	// HealthCheck returns the HTTP readiness check for a node port.
-	HealthCheck(nodePort int64) (*compute.HttpHealthCheck, error)
-}
-
-// SingleHealthCheck is an interface to manage a single GCE health check.
-type SingleHealthCheck interface {
+// HealthCheckProvider is an interface to manage a single GCE health check.
+type HealthCheckProvider interface {
 	CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error
 	UpdateHttpHealthCheck(hc *compute.HttpHealthCheck) error
 	DeleteHttpHealthCheck(name string) error
 	GetHttpHealthCheck(name string) (*compute.HttpHealthCheck, error)
+
+	CreateHttpsHealthCheck(hc *compute.HttpsHealthCheck) error
+	UpdateHttpsHealthCheck(hc *compute.HttpsHealthCheck) error
+	DeleteHttpsHealthCheck(name string) error
+	GetHttpsHealthCheck(name string) (*compute.HttpsHealthCheck, error)
 }
 
 // HealthChecker is an interface to manage cloud HTTPHealthChecks.
 type HealthChecker interface {
-	Init(h healthCheckGetter)
-
-	Add(port int64) error
-	Delete(port int64) error
-	Get(port int64) (*compute.HttpHealthCheck, error)
+	New(port int64, encrypted bool) *HealthCheck
+	Sync(hc *HealthCheck) error
+	Delete(port int64, encrypted bool) error
+	Get(port int64, encrypted bool) (*HealthCheck, error)
 }
