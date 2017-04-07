@@ -188,7 +188,7 @@ func (b *Backends) create(igs []*compute.InstanceGroup, namedPort *compute.Named
 	var errs []string
 	// We first try to create the backend with balancingMode=RATE.  If this
 	// fails, it's mostly likely because there are existing backends with
-	// balancingMode=UTILIZATION. This failure mode throws a googleapi_v1 error
+	// balancingMode=UTILIZATION. This failure mode throws a googleapi error
 	// which wraps a HTTP 400 status code. We handle it in the loop below
 	// and come around to retry with the right balancing mode. The goal is to
 	// switch everyone to using RATE.
