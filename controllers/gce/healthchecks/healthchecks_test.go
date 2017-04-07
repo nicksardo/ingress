@@ -61,7 +61,7 @@ func TestHealthCheckAddExisting(t *testing.T) {
 	httpHC := DefaultHealthCheckTemplate(3000, false)
 	httpHC.Name = namer.BeName(3000)
 	httpHC.RequestPath = "/my-probes-health"
-	hcp.CreateHttpHealthCheck(httpHC.ToHttpHealthCheck())
+	hcp.CreateHttpHealthCheck(httpHC.toHttpHealthCheck())
 
 	// Should not fail adding the same type of health check
 	hc := healthChecks.New(3000, false)
@@ -80,7 +80,7 @@ func TestHealthCheckAddExisting(t *testing.T) {
 	httpsHC := DefaultHealthCheckTemplate(4000, true)
 	httpsHC.Name = namer.BeName(4000)
 	httpsHC.RequestPath = "/my-probes-health"
-	hcp.CreateHttpsHealthCheck(httpsHC.ToHttpsHealthCheck())
+	hcp.CreateHttpsHealthCheck(httpsHC.toHttpsHealthCheck())
 
 	hc = healthChecks.New(4000, true)
 	err = healthChecks.Sync(hc)
@@ -102,10 +102,10 @@ func TestHealthCheckDelete(t *testing.T) {
 	// Create HTTP HC for 1234
 	hc := DefaultHealthCheckTemplate(1234, false)
 	hc.Name = namer.BeName(1234)
-	hcp.CreateHttpHealthCheck(hc.ToHttpHealthCheck())
+	hcp.CreateHttpHealthCheck(hc.toHttpHealthCheck())
 
 	// Create HTTPS HC for 1234)
-	hcp.CreateHttpsHealthCheck(hc.ToHttpsHealthCheck())
+	hcp.CreateHttpsHealthCheck(hc.toHttpsHealthCheck())
 
 	// Delete only HTTP 1234
 	err := healthChecks.Delete(1234, false)
@@ -142,7 +142,7 @@ func TestHealthCheckGet(t *testing.T) {
 	httpHC := DefaultHealthCheckTemplate(3000, false)
 	httpHC.Name = namer.BeName(3000)
 	httpHC.RequestPath = "/my-probes-health"
-	hcp.CreateHttpHealthCheck(httpHC.ToHttpHealthCheck())
+	hcp.CreateHttpHealthCheck(httpHC.toHttpHealthCheck())
 
 	// Verify the health check exists
 	_, err := healthChecks.Get(3000, false)
@@ -155,7 +155,7 @@ func TestHealthCheckGet(t *testing.T) {
 	httpsHC := DefaultHealthCheckTemplate(4000, true)
 	httpsHC.Name = namer.BeName(4000)
 	httpsHC.RequestPath = "/my-probes-health"
-	hcp.CreateHttpsHealthCheck(httpsHC.ToHttpsHealthCheck())
+	hcp.CreateHttpsHealthCheck(httpsHC.toHttpsHealthCheck())
 
 	// Verify the health check exists
 	_, err = healthChecks.Get(4000, true)

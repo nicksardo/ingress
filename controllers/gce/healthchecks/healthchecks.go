@@ -66,16 +66,16 @@ func (h *HealthChecks) Sync(hc *HealthCheck) error {
 		hc.RequestPath = h.defaultPath
 	}
 
-	existingHC, err := h.Get(hc.Port, hc.Encrypted)
+	existingHC, err := h.Get(hc.Port, hc.Encrypted())
 	if err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
 	if existingHC == nil {
-		glog.Infof("Creating %v health check %v", utils.GetHTTPScheme(hc.Encrypted), hc.Name)
-		if hc.Encrypted {
-			return h.cloud.CreateHttpsHealthCheck(hc.ToHttpsHealthCheck())
+		glog.Infof("Creating %v health check %v", utils.GetHTTPScheme(hc.Encrypted()), hc.Name)
+		if hc.Encrypted() {
+			return h.cloud.CreateHttpsHealthCheck(hc.toHttpsHealthCheck())
 		}
-		return h.cloud.CreateHttpHealthCheck(hc.ToHttpHealthCheck())
+		return h.cloud.CreateHttpHealthCheck(hc.toHttpHealthCheck())
 	}
 	if existingHC != nil && existingHC.RequestPath != hc.RequestPath {
 		// TODO: reconcile health checks, and compare headers interval etc.
@@ -135,16 +135,18 @@ func DefaultHealthCheckTemplate(port int64, encrypted bool) *HealthCheck {
 			// Number of healthchecks to fail before the vm is deemed unhealthy.
 			UnhealthyThreshold: DefaultUnhealthyThreshold,
 		},
-		Encrypted: encrypted,
+		encrypted: encrypted,
 	}
 }
 
+// HealthCheck is an abstraction of compute's two types of checks, HTTP and HTTPS
+// Consumers of this package can make changes to the health check settings
 type HealthCheck struct {
 	compute.HttpHealthCheck
-	Encrypted bool
+	encrypted bool
 }
 
-// NewHealthCheckHttp
+// NewHealthCheckHttp creates a HealthCheck struct with Encrypted=false
 func NewHealthCheckHttp(hc *compute.HttpHealthCheck) *HealthCheck {
 	if hc == nil {
 		return nil
@@ -152,11 +154,11 @@ func NewHealthCheckHttp(hc *compute.HttpHealthCheck) *HealthCheck {
 
 	return &HealthCheck{
 		HttpHealthCheck: *hc,
-		Encrypted:       false,
+		encrypted:       false,
 	}
 }
 
-// NewHealthCheckHttps
+// NewHealthCheckHttps creates a HealthCheck struct with Encrypted=true
 func NewHealthCheckHttps(hc *compute.HttpsHealthCheck) *HealthCheck {
 	if hc == nil {
 		return nil
@@ -164,17 +166,22 @@ func NewHealthCheckHttps(hc *compute.HttpsHealthCheck) *HealthCheck {
 	h := *hc
 	return &HealthCheck{
 		HttpHealthCheck: compute.HttpHealthCheck(h),
-		Encrypted:       true,
+		encrypted:       true,
 	}
 }
 
-// ToHttpHealthCheck should only be called if Encrypted=false
-func (hc *HealthCheck) ToHttpHealthCheck() *compute.HttpHealthCheck {
+// Encrypted returns whether this health check is HTTP/HTTPS
+func (hc *HealthCheck) Encrypted() bool {
+	return hc.encrypted
+}
+
+// toHttpHealthCheck should only be called if Encrypted=false
+func (hc *HealthCheck) toHttpHealthCheck() *compute.HttpHealthCheck {
 	return &hc.HttpHealthCheck
 }
 
-// ToHttpsHealthCheck should only be called if Encrypted=true
-func (hc *HealthCheck) ToHttpsHealthCheck() *compute.HttpsHealthCheck {
+// toHttpsHealthCheck should only be called if Encrypted=true
+func (hc *HealthCheck) toHttpsHealthCheck() *compute.HttpsHealthCheck {
 	ehc := compute.HttpsHealthCheck(hc.HttpHealthCheck)
 	return &ehc
 }

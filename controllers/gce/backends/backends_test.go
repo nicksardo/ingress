@@ -110,8 +110,8 @@ func TestBackendPoolAdd(t *testing.T) {
 				t.Fatalf("Unexpected err when querying fake healthchecker: %v", err)
 			}
 
-			if hc.Encrypted != nodePort.Encrypted {
-				t.Fatalf("Healthcheck scheme does not match nodeport scheme: hc:%v np:%v", utils.GetHTTPScheme(hc.Encrypted), utils.GetHTTPScheme(nodePort.Encrypted))
+			if hc.Encrypted() != nodePort.Encrypted {
+				t.Fatalf("Healthcheck scheme does not match nodeport scheme: hc:%v np:%v", utils.GetHTTPScheme(hc.Encrypted()), utils.GetHTTPScheme(nodePort.Encrypted))
 			}
 		})
 	}
@@ -138,7 +138,7 @@ func TestBackendPoolUpdate(t *testing.T) {
 
 	// Assert the proper health check was created
 	hc, _ := pool.healthChecker.Get(p.Port, p.Encrypted)
-	if hc == nil || hc.Encrypted != p.Encrypted {
+	if hc == nil || hc.Encrypted() != p.Encrypted {
 		t.Fatalf("Expected %s health check, received %v: ", utils.GetHTTPScheme(p.Encrypted), hc)
 	}
 
@@ -158,7 +158,7 @@ func TestBackendPoolUpdate(t *testing.T) {
 
 	// Assert the proper health check was created
 	hc, _ = pool.healthChecker.Get(p.Port, p.Encrypted)
-	if hc == nil || hc.Encrypted != p.Encrypted {
+	if hc == nil || hc.Encrypted() != p.Encrypted {
 		t.Fatalf("Expected %s health check, received %v: ", utils.GetHTTPScheme(p.Encrypted), hc)
 	}
 
@@ -402,7 +402,7 @@ func TestApplyProbeSettingsToHC(t *testing.T) {
 
 	applyProbeSettingsToHC(probe, hc)
 
-	if hc.Encrypted != true || hc.Port != 8080 {
+	if hc.Encrypted() != true || hc.Port != 8080 {
 		t.Errorf("Basic HC settings changed")
 	}
 	if hc.RequestPath != "/"+p {
