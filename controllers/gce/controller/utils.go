@@ -65,8 +65,10 @@ const (
 	// to the target proxies of the Ingress.
 	preSharedCertKey = "ingress.gcp.kubernetes.io/pre-shared-cert"
 
-	// serviceReencryptKey
-	serviceReencryptKey = "service.alpha.kubernetes.io/tls-ports"
+	// serviceReencryptKey is a stringified JSON array of port names which expect
+	// encrypted communication.
+	// Example value: "[\"https1\",\"https2\"]"
+	serviceTLSPortsKey = "service.alpha.kubernetes.io/tls-ports"
 
 	// ingressClassKey picks a specific "class" for the Ingress. The controller
 	// only processes Ingresses with this annotation either unset, or set
@@ -125,7 +127,7 @@ func (ing ingAnnotations) ingressClass() string {
 type svcAnnotations map[string]string
 
 func (svc svcAnnotations) TLSPorts() (map[string]struct{}, error) {
-	val, ok := svc[serviceReencryptKey]
+	val, ok := svc[serviceTLSPortsKey]
 	if !ok {
 		return map[string]struct{}{}, nil
 	}
@@ -168,7 +170,7 @@ type errorSvcTLSPortsParsing struct {
 }
 
 func (e errorSvcTLSPortsParsing) Error() string {
-	return fmt.Sprintf("could not parse %v annotation on Service %v/%v, err: %v", serviceReencryptKey, e.svc.Namespace, e.svc.Name, e.origErr)
+	return fmt.Sprintf("could not parse %v annotation on Service %v/%v, err: %v", serviceTLSPortsKey, e.svc.Namespace, e.svc.Name, e.origErr)
 }
 
 // taskQueue manages a work queue through an independent worker that
