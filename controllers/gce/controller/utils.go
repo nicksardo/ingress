@@ -65,10 +65,11 @@ const (
 	// to the target proxies of the Ingress.
 	preSharedCertKey = "ingress.gcp.kubernetes.io/pre-shared-cert"
 
-	// serviceReencryptKey is a stringified JSON array of port names which expect
-	// encrypted communication.
-	// Example value: "[\"https1\",\"https2\"]"
-	serviceTLSPortsKey = "service.alpha.kubernetes.io/tls-ports"
+	// serviceApplicationProtocolKey is a stringified JSON map of port names to
+	// protocol strings. Possible values are HTTP, HTTPS, (more to come)
+	// Example:
+	// "{\"my-https-port\":\"HTTPS\",\"my-http-port\":\"HTTP\"}"
+	serviceApplicationProtocolKey = "service.alpha.kubernetes.io/app-protocols"
 
 	// ingressClassKey picks a specific "class" for the Ingress. The controller
 	// only processes Ingresses with this annotation either unset, or set
@@ -126,24 +127,15 @@ func (ing ingAnnotations) ingressClass() string {
 // svcAnnotations represents Service annotations.
 type svcAnnotations map[string]string
 
-func (svc svcAnnotations) TLSPorts() (map[string]struct{}, error) {
-	val, ok := svc[serviceTLSPortsKey]
+func (svc svcAnnotations) ApplicationProtocols() (map[string]string, error) {
+	val, ok := svc[serviceApplicationProtocolKey]
 	if !ok {
-		return map[string]struct{}{}, nil
+		return map[string]string{}, nil
 	}
 
-	var ports []string
-	err := json.Unmarshal([]byte(val), &ports)
-	if err != nil {
-		return nil, err
-	}
-
-	portMap := map[string]struct{}{}
-	for _, p := range ports {
-		portMap[p] = struct{}{}
-	}
-
-	return portMap, err
+	var appProtos map[string]string
+	err := json.Unmarshal([]byte(val), &appProtos)
+	return appProtos, err
 }
 
 // isGCEIngress returns true if the given Ingress either doesn't specify the
@@ -426,7 +418,7 @@ func (t *GCETranslator) getServiceNodePort(be extensions.IngressBackend, namespa
 		return noPort, errorNodePortNotFound{be, err}
 	}
 	svc := obj.(*api_v1.Service)
-	tlsPorts, err := svcAnnotations(svc.GetAnnotations()).TLSPorts()
+	appProtocols, err := svcAnnotations(svc.GetAnnotations()).ApplicationProtocols()
 	if err != nil {
 		return noPort, errorSvcTLSPortsParsing{svc, err}
 	}

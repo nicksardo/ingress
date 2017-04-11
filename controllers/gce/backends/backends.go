@@ -88,10 +88,10 @@ func portKey(port int64) string {
 	return fmt.Sprintf("%d", port)
 }
 
-// ServicePort for tupling port and encryption bool
+// ServicePort for tupling port and protocol
 type ServicePort struct {
-	Port      int64
-	Encrypted bool
+	Port     int64
+	Protocol string
 }
 
 // NewBackendPool returns a new backend pool.
