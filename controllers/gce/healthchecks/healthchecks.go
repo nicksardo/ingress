@@ -51,6 +51,7 @@ func NewHealthChecker(cloud HealthCheckProvider, defaultHealthCheckPath string, 
 	return &HealthChecks{cloud, defaultHealthCheckPath, namer}
 }
 
+// New returns a *HealthCheck with default settings and specified port/protocol
 func (h *HealthChecks) New(port int64, protocol utils.AppProtocol) *HealthCheck {
 	hc := DefaultHealthCheck(port, protocol)
 	hc.Name = h.namer.BeName(port)
@@ -119,6 +120,7 @@ func (h *HealthChecks) Get(port int64) (*HealthCheck, error) {
 	return NewHealthCheck(hc), err
 }
 
+// DeleteLegacy deletes legacy HTTP health checks
 func (h *HealthChecks) DeleteLegacy(port int64) error {
 	name := h.namer.BeName(port)
 	glog.Infof("Deleting legacy HTTP health check %v", name)

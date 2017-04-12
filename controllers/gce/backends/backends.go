@@ -142,6 +142,7 @@ func NewBackendPool(
 	return backendPool
 }
 
+// Init sets the probeProvider interface value
 func (b *Backends) Init(pp probeProvider) {
 	b.prober = pp
 }
@@ -261,7 +262,7 @@ func (b *Backends) Add(p ServicePort) error {
 	}
 
 	if be.Protocol != string(p.Protocol) || existingHCLink != hcLink {
-		glog.Infof("Updating backend protocol %v (%v) for change in protocol or health check", pName, string(p.Protocol))
+		glog.Infof("Updating backend protocol %v (%v) for change in protocol (%v) or health check", pName, be.Protocol, string(p.Protocol))
 		be.Protocol = string(p.Protocol)
 		be.HealthChecks = []string{hcLink}
 		if err = b.cloud.UpdateBackendService(be); err != nil {
@@ -269,7 +270,7 @@ func (b *Backends) Add(p ServicePort) error {
 		}
 	}
 
-	// If we updated the backend service above, delete the legacy health check
+	// If previous health check was legacy type, we need to delete it.
 	if existingHCLink != hcLink && strings.Contains(existingHCLink, "/httpHealthChecks/") {
 		if err = b.healthChecker.DeleteLegacy(p.Port); err != nil {
 			return err

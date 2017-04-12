@@ -125,6 +125,7 @@ type FakeProbeProvider struct {
 	probes map[int64]*api_v1.Probe
 }
 
+// NewFakeProbeProvider returns a struct which satifies probeProvider interface
 func NewFakeProbeProvider(probes map[int64]*api_v1.Probe) *FakeProbeProvider {
 	return &FakeProbeProvider{probes}
 }

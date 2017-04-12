@@ -79,7 +79,16 @@ const (
 	// K8sAnnotationPrefix is the prefix used in annotations used to record
 	// debug information in the Ingress annotations.
 	K8sAnnotationPrefix = "ingress.kubernetes.io"
+
+	// HTTP protocol
+	HTTP AppProtocol = "HTTP"
+	// HTTPS protocol
+	HTTPS AppProtocol = "HTTPS"
 )
+
+// AppProtocol applies to each port in a Service and informs consumers if the process
+// expects HTTP or HTTPS communication.
+type AppProtocol string
 
 // Namer handles centralized naming for the cluster.
 type Namer struct {
@@ -327,12 +336,3 @@ func GetHTTPScheme(encrypted bool) string {
 // FakeIngressRuleValueMap is a convenience type used by multiple submodules
 // that share the same testing methods.
 type FakeIngressRuleValueMap map[string]string
-
-type AppProtocol string
-
-const (
-	// HTTP protocol for a service
-	HTTP AppProtocol = "HTTP"
-	// HTTPS protocol for a service
-	HTTPS AppProtocol = "HTTPS"
-)

@@ -252,6 +252,7 @@ type StoreToPodLister struct {
 	cache.Indexer
 }
 
+// List returns a list of all pods as selected
 func (s *StoreToPodLister) List(selector labels.Selector) (ret []*api_v1.Pod, err error) {
 	err = ListAll(s.Indexer, selector, func(m interface{}) {
 		ret = append(ret, m.(*api_v1.Pod))
@@ -259,6 +260,7 @@ func (s *StoreToPodLister) List(selector labels.Selector) (ret []*api_v1.Pod, er
 	return ret, err
 }
 
+// ListAll iterates a store and passes selected item to a func
 func ListAll(store cache.Store, selector labels.Selector, appendFn cache.AppendFunc) error {
 	for _, m := range store.List() {
 		metadata, err := meta.Accessor(m)
