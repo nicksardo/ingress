@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	testDefaultBeNodePort = backends.ServicePort{Port: 3000, Encrypted: false}
+	testDefaultBeNodePort = backends.ServicePort{Port: 3000, Protocol: utils.HTTP}
 )
 
 func newFakeLoadBalancerPool(f LoadBalancers, t *testing.T) LoadBalancerPool {

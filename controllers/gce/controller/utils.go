@@ -156,13 +156,13 @@ func (e errorNodePortNotFound) Error() string {
 		e.backend, e.origErr)
 }
 
-type errorSvcTLSPortsParsing struct {
+type errorSvcAppProtosParsing struct {
 	svc     *api_v1.Service
 	origErr error
 }
 
-func (e errorSvcTLSPortsParsing) Error() string {
-	return fmt.Sprintf("could not parse %v annotation on Service %v/%v, err: %v", serviceTLSPortsKey, e.svc.Namespace, e.svc.Name, e.origErr)
+func (e errorSvcAppProtosParsing) Error() string {
+	return fmt.Sprintf("could not parse %v annotation on Service %v/%v, err: %v", serviceApplicationProtocolKey, e.svc.Namespace, e.svc.Name, e.origErr)
 }
 
 // taskQueue manages a work queue through an independent worker that
@@ -420,7 +420,7 @@ func (t *GCETranslator) getServiceNodePort(be extensions.IngressBackend, namespa
 	svc := obj.(*api_v1.Service)
 	appProtocols, err := svcAnnotations(svc.GetAnnotations()).ApplicationProtocols()
 	if err != nil {
-		return noPort, errorSvcTLSPortsParsing{svc, err}
+		return noPort, errorSvcAppProtosParsing{svc, err}
 	}
 
 	var port *api_v1.ServicePort
@@ -445,8 +445,18 @@ PortLoop:
 		return noPort, errorNodePortNotFound{be, fmt.Errorf("could not find matching nodeport from service")}
 	}
 
-	_, isEncrypted := tlsPorts[port.Name]
-	p := backends.ServicePort{Port: int64(port.NodePort), Encrypted: isEncrypted}
+	proto := utils.HTTP
+	if protoStr, exists := appProtocols[port.Name]; exists {
+		proto = utils.AppProtocol(protoStr)
+	}
+
+	switch proto {
+	case utils.HTTP, utils.HTTPS:
+	default:
+		return noPort, errorSvcAppProtosParsing{svc, fmt.Errorf("unrecognized protocol: %v", proto)}
+	}
+
+	p := backends.ServicePort{Port: int64(port.NodePort), Protocol: proto}
 	return p, nil
 }
 

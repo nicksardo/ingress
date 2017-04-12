@@ -51,137 +51,148 @@ func NewHealthChecker(cloud HealthCheckProvider, defaultHealthCheckPath string, 
 	return &HealthChecks{cloud, defaultHealthCheckPath, namer}
 }
 
-func (h *HealthChecks) New(port int64, encrypted bool) *HealthCheck {
-	hc := DefaultHealthCheckTemplate(port, encrypted)
+func (h *HealthChecks) New(port int64, protocol utils.AppProtocol) *HealthCheck {
+	hc := DefaultHealthCheck(port, protocol)
 	hc.Name = h.namer.BeName(port)
 	return hc
 }
 
-// Sync retrieves a health check based on port/encryption, checks for properties
-// that should be identical, and updates/creates if necessary.
+// Sync retrieves a health check based on port, checks type and settings and updates/creates if necessary.
 // Sync is only called by the backends.Add func - it's not a pool like other resources.
-func (h *HealthChecks) Sync(hc *HealthCheck) error {
+func (h *HealthChecks) Sync(hc *HealthCheck) (string, error) {
 	// Verify default path
 	if hc.RequestPath == "" {
 		hc.RequestPath = h.defaultPath
 	}
 
-	existingHC, err := h.Get(hc.Port, hc.Encrypted())
-	if err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
-		return err
-	}
-	if existingHC == nil {
-		glog.Infof("Creating %v health check %v", utils.GetHTTPScheme(hc.Encrypted()), hc.Name)
-		if hc.Encrypted() {
-			return h.cloud.CreateHttpsHealthCheck(hc.toHttpsHealthCheck())
+	existingHC, err := h.Get(hc.Port)
+	if err != nil {
+		if !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+			return "", err
 		}
-		return h.cloud.CreateHttpHealthCheck(hc.toHttpHealthCheck())
+
+		glog.Infof("Creating health check for port %v with protocol %v", hc.Port, hc.Type)
+		if err = h.cloud.CreateHealthCheck(hc.Out()); err != nil {
+			return "", err
+		}
+
+		return h.getHealthCheckLink(hc.Port)
 	}
-	if existingHC != nil && existingHC.RequestPath != hc.RequestPath {
+
+	if existingHC.Protocol() != hc.Protocol() {
+		glog.Infof("Updating health check %v because it has protocol %v but need %v", existingHC.Name, existingHC.Type, hc.Type)
+		err = h.cloud.UpdateHealthCheck(hc.Out())
+		return existingHC.SelfLink, err
+	}
+
+	if existingHC.RequestPath != hc.RequestPath {
 		// TODO: reconcile health checks, and compare headers interval etc.
 		// Currently Ingress doesn't expose all the health check params
 		// natively, so some users prefer to hand modify the check.
-		glog.Infof("Unexpected request path on health check %v, has %v want %v, NOT reconciling",
-			hc.Name, existingHC.RequestPath, hc.RequestPath)
+		glog.Infof("Unexpected request path on health check %v, has %v want %v, NOT reconciling", hc.Name, existingHC.RequestPath, hc.RequestPath)
 	} else {
 		glog.Infof("Health check %v already exists and has the expected path %v", hc.Name, hc.RequestPath)
 	}
 
-	return nil
+	return existingHC.SelfLink, nil
+}
+
+func (h *HealthChecks) getHealthCheckLink(port int64) (string, error) {
+	hc, err := h.Get(port)
+	if err != nil {
+		return "", err
+	}
+	return hc.SelfLink, nil
 }
 
 // Delete deletes the health check by port.
-func (h *HealthChecks) Delete(port int64, encrypted bool) error {
-	scheme := utils.GetHTTPScheme(encrypted)
+func (h *HealthChecks) Delete(port int64) error {
 	name := h.namer.BeName(port)
-	glog.Infof("Deleting %v health check %v", scheme, name)
-	if encrypted {
-		return h.cloud.DeleteHttpsHealthCheck(h.namer.BeName(port))
-	}
-	return h.cloud.DeleteHttpHealthCheck(h.namer.BeName(port))
+	glog.Infof("Deleting health check %v", name)
+	return h.cloud.DeleteHealthCheck(name)
 }
 
-func (h *HealthChecks) Get(port int64, encrypted bool) (*HealthCheck, error) {
+// Get returns the health check by port
+func (h *HealthChecks) Get(port int64) (*HealthCheck, error) {
 	name := h.namer.BeName(port)
-	if encrypted {
-		hc, err := h.cloud.GetHttpsHealthCheck(name)
-		if err != nil {
-			return nil, err
-		}
-		return NewHealthCheckHttps(hc), nil
-	}
-	hc, err := h.cloud.GetHttpHealthCheck(name)
-	if err != nil {
-		return nil, err
-	}
-	return NewHealthCheckHttp(hc), nil
+	hc, err := h.cloud.GetHealthCheck(name)
+	return NewHealthCheck(hc), err
 }
 
-// DefaultHealthCheckTemplate simply returns the default health check template.
-func DefaultHealthCheckTemplate(port int64, encrypted bool) *HealthCheck {
+func (h *HealthChecks) DeleteLegacy(port int64) error {
+	name := h.namer.BeName(port)
+	glog.Infof("Deleting legacy HTTP health check %v", name)
+	return h.cloud.DeleteHttpHealthCheck(name)
+}
+
+// DefaultHealthCheck simply returns the default health check.
+func DefaultHealthCheck(port int64, protocol utils.AppProtocol) *HealthCheck {
+	httpSettings := compute.HTTPHealthCheck{
+		Port: port,
+		// Empty string is used as a signal to the caller to use the appropriate
+		// default.
+		RequestPath: "",
+	}
+
+	hcSettings := compute.HealthCheck{
+		// How often to health check.
+		CheckIntervalSec: DefaultHealthCheckInterval,
+		// How long to wait before claiming failure of a health check.
+		TimeoutSec: DefaultTimeoutSeconds,
+		// Number of healthchecks to pass for a vm to be deemed healthy.
+		HealthyThreshold: DefaultHealthyThreshold,
+		// Number of healthchecks to fail before the vm is deemed unhealthy.
+		UnhealthyThreshold: DefaultUnhealthyThreshold,
+		Description:        "Default kubernetes L7 Loadbalancing health check.",
+		Type:               string(protocol),
+	}
+
 	return &HealthCheck{
-		HttpHealthCheck: compute.HttpHealthCheck{
-			Port: port,
-			// Empty string is used as a signal to the caller to use the appropriate
-			// default.
-			RequestPath: "",
-			Description: "Default kubernetes L7 Loadbalancing health check.",
-			// How often to health check.
-			CheckIntervalSec: DefaultHealthCheckInterval,
-			// How long to wait before claiming failure of a health check.
-			TimeoutSec: DefaultTimeoutSeconds,
-			// Number of healthchecks to pass for a vm to be deemed healthy.
-			HealthyThreshold: DefaultHealthyThreshold,
-			// Number of healthchecks to fail before the vm is deemed unhealthy.
-			UnhealthyThreshold: DefaultUnhealthyThreshold,
-		},
-		encrypted: encrypted,
+		HTTPHealthCheck: httpSettings,
+		HealthCheck:     hcSettings,
 	}
 }
 
-// HealthCheck is an abstraction of compute's two types of checks, HTTP and HTTPS
-// Consumers of this package can make changes to the health check settings
+// HealthCheck wraps compute.HealthCheck so consumers aren't worried about checking
+// the various HTTP settings duplicated between HttpHealthCheck, HttpsHealthCheck, etc.
 type HealthCheck struct {
-	compute.HttpHealthCheck
-	encrypted bool
+	compute.HTTPHealthCheck
+	compute.HealthCheck
 }
 
-// NewHealthCheckHttp creates a HealthCheck struct with Encrypted=false
-func NewHealthCheckHttp(hc *compute.HttpHealthCheck) *HealthCheck {
-	if hc == nil {
+// NewHealthCheck creates a HealthCheck which abstracts nested structs away
+func NewHealthCheck(inner *compute.HealthCheck) *HealthCheck {
+	if inner == nil {
 		return nil
 	}
 
-	return &HealthCheck{
-		HttpHealthCheck: *hc,
-		encrypted:       false,
+	v := &HealthCheck{HealthCheck: *inner}
+	switch utils.AppProtocol(inner.Type) {
+	case utils.HTTP:
+		v.HTTPHealthCheck = *inner.HttpHealthCheck
+	case utils.HTTPS:
+		v.HTTPHealthCheck = compute.HTTPHealthCheck(*inner.HttpsHealthCheck)
 	}
+
+	return v
 }
 
-// NewHealthCheckHttps creates a HealthCheck struct with Encrypted=true
-func NewHealthCheckHttps(hc *compute.HttpsHealthCheck) *HealthCheck {
-	if hc == nil {
-		return nil
+// Protocol returns the type cased to AppProtocol
+func (hc *HealthCheck) Protocol() utils.AppProtocol {
+	return utils.AppProtocol(hc.Type)
+}
+
+// Out returns a valid compute.HealthCheck object
+func (hc *HealthCheck) Out() *compute.HealthCheck {
+	switch hc.Protocol() {
+	case utils.HTTP:
+		hc.HealthCheck.HttpsHealthCheck = nil
+		hc.HealthCheck.HttpHealthCheck = &hc.HTTPHealthCheck
+	case utils.HTTPS:
+		https := compute.HTTPSHealthCheck(hc.HTTPHealthCheck)
+		hc.HealthCheck.HttpHealthCheck = nil
+		hc.HealthCheck.HttpsHealthCheck = &https
 	}
-	h := *hc
-	return &HealthCheck{
-		HttpHealthCheck: compute.HttpHealthCheck(h),
-		encrypted:       true,
-	}
-}
 
-// Encrypted returns whether this health check is HTTP/HTTPS
-func (hc *HealthCheck) Encrypted() bool {
-	return hc.encrypted
-}
-
-// toHttpHealthCheck should only be called if Encrypted=false
-func (hc *HealthCheck) toHttpHealthCheck() *compute.HttpHealthCheck {
-	return &hc.HttpHealthCheck
-}
-
-// toHttpsHealthCheck should only be called if Encrypted=true
-func (hc *HealthCheck) toHttpsHealthCheck() *compute.HttpsHealthCheck {
-	ehc := compute.HttpsHealthCheck(hc.HttpHealthCheck)
-	return &ehc
+	return &hc.HealthCheck
 }

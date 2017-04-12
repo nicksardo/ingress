@@ -91,7 +91,7 @@ func portKey(port int64) string {
 // ServicePort for tupling port and protocol
 type ServicePort struct {
 	Port     int64
-	Protocol string
+	Protocol utils.AppProtocol
 }
 
 // NewBackendPool returns a new backend pool.
@@ -156,8 +156,8 @@ func (b *Backends) Get(port int64) (*compute.BackendService, error) {
 	return be, nil
 }
 
-func (b *Backends) ensureHealthCheck(port int64, encrypted bool) (string, error) {
-	hc := b.healthChecker.New(port, encrypted)
+func (b *Backends) ensureHealthCheck(port int64, protocol utils.AppProtocol) (string, error) {
+	hc := b.healthChecker.New(port, protocol)
 	if b.prober != nil {
 		probe, err := b.prober.GetProbe(port)
 		if err != nil {
@@ -168,23 +168,10 @@ func (b *Backends) ensureHealthCheck(port int64, encrypted bool) (string, error)
 		}
 	}
 
-	if err := b.healthChecker.Sync(hc); err != nil {
-		return "", err
-	}
-	//TODO: Avoid this second call
-	hc, err := b.healthChecker.Get(port, encrypted)
-	if err != nil {
-		return "", err
-	}
-	return hc.SelfLink, nil
+	return b.healthChecker.Sync(hc)
 }
 
-func (b *Backends) create(igs []*compute.InstanceGroup, namedPort *compute.NamedPort, encrypted bool, name string) (*compute.BackendService, error) {
-	hclink, err := b.ensureHealthCheck(namedPort.Port, encrypted)
-	if err != nil {
-		return nil, err
-	}
-
+func (b *Backends) create(igs []*compute.InstanceGroup, namedPort *compute.NamedPort, hcLink string, protocol utils.AppProtocol, name string) (*compute.BackendService, error) {
 	var errs []string
 	// We first try to create the backend with balancingMode=RATE.  If this
 	// fails, it's mostly likely because there are existing backends with
@@ -194,7 +181,7 @@ func (b *Backends) create(igs []*compute.InstanceGroup, namedPort *compute.Named
 	// switch everyone to using RATE.
 	for _, bm := range []BalancingMode{Rate, Utilization} {
 		// Create a new backend
-		bs := newBackendService(igs, bm, namedPort, []string{hclink}, encrypted, name)
+		bs := newBackendService(igs, bm, namedPort, []string{hcLink}, protocol, name)
 		if err := b.cloud.CreateBackendService(bs); err != nil {
 			// This is probably a failure because we tried to create the backend
 			// with balancingMode=RATE when there are already backends with
@@ -212,7 +199,7 @@ func (b *Backends) create(igs []*compute.InstanceGroup, namedPort *compute.Named
 	return nil, fmt.Errorf("%v", strings.Join(errs, "\n"))
 }
 
-func newBackendService(igs []*compute.InstanceGroup, bm BalancingMode, namedPort *compute.NamedPort, healthCheckLinks []string, encrypted bool, name string) *compute.BackendService {
+func newBackendService(igs []*compute.InstanceGroup, bm BalancingMode, namedPort *compute.NamedPort, healthCheckLinks []string, protocol utils.AppProtocol, name string) *compute.BackendService {
 	backends := getBackendsForIGs(igs)
 	for _, b := range backends {
 		switch bm {
@@ -227,7 +214,7 @@ func newBackendService(igs []*compute.InstanceGroup, bm BalancingMode, namedPort
 
 	return &compute.BackendService{
 		Name:         name,
-		Protocol:     utils.GetHTTPScheme(encrypted),
+		Protocol:     string(protocol),
 		Backends:     backends,
 		HealthChecks: healthCheckLinks,
 		Port:         namedPort.Port,
@@ -235,24 +222,7 @@ func newBackendService(igs []*compute.InstanceGroup, bm BalancingMode, namedPort
 	}
 }
 
-func (b *Backends) updateProtocol(bs *compute.BackendService, encrypted bool) (*compute.BackendService, error) {
-	// Create healthcheck with proper protocol
-	hclink, err := b.ensureHealthCheck(bs.Port, encrypted)
-	if err != nil {
-		return nil, err
-	}
-
-	bs.Protocol = utils.GetHTTPScheme(encrypted)
-	bs.HealthChecks = []string{hclink}
-
-	if err = b.cloud.UpdateBackendService(bs); err != nil {
-		return bs, err
-	}
-
-	// Attempt delete of previous healthcheck; warn that err occurred
-	if err = b.healthChecker.Delete(bs.Port, !encrypted); err != nil {
-		glog.Warningf("Failed to delete %v healthcheck for port %v, err: %v", utils.GetHTTPScheme(!encrypted), bs.Port, err)
-	}
+func (b *Backends) updateProtocol(bs *compute.BackendService, hcLink string, protocol utils.AppProtocol) (*compute.BackendService, error) {
 
 	return bs, nil
 }
@@ -269,20 +239,41 @@ func (b *Backends) Add(p ServicePort) error {
 		return err
 	}
 
+	// Ensure health check for backend service exists
+	hcLink, err := b.ensureHealthCheck(p.Port, p.Protocol)
+	if err != nil {
+		return err
+	}
+
 	pName := b.namer.BeName(p.Port)
 	be, _ = b.Get(p.Port)
 	if be == nil {
 		glog.Infof("Creating backend for %d instance groups, port %v named port %v", len(igs), p.Port, namedPort)
-		be, err = b.create(igs, namedPort, p.Encrypted, pName)
+		be, err = b.create(igs, namedPort, hcLink, p.Protocol, pName)
 		if err != nil {
 			return err
 		}
 	}
 
-	pProto := utils.GetHTTPScheme(p.Encrypted)
-	if be.Protocol != pProto {
-		glog.Infof("Updating backend protocol %v from %v to %v", pName, be.Protocol, pProto)
-		b.updateProtocol(be, p.Encrypted)
+	existingHCLink := ""
+	if len(be.HealthChecks) == 1 {
+		existingHCLink = be.HealthChecks[0]
+	}
+
+	if be.Protocol != string(p.Protocol) || existingHCLink != hcLink {
+		glog.Infof("Updating backend protocol %v (%v) for change in protocol or health check", pName, string(p.Protocol))
+		be.Protocol = string(p.Protocol)
+		be.HealthChecks = []string{hcLink}
+		if err = b.cloud.UpdateBackendService(be); err != nil {
+			return err
+		}
+	}
+
+	// If we updated the backend service above, delete the legacy health check
+	if existingHCLink != hcLink && strings.Contains(existingHCLink, "/httpHealthChecks/") {
+		if err = b.healthChecker.DeleteLegacy(p.Port); err != nil {
+			return err
+		}
 	}
 
 	// we won't find any igs till the node pool syncs nodes.
@@ -308,22 +299,11 @@ func (b *Backends) Delete(port int64) (err error) {
 		}
 	}()
 	// Try deleting health checks even if a backend is not found.
-	if err = b.cloud.DeleteBackendService(name); err != nil &&
-		!utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+	if err = b.cloud.DeleteBackendService(name); err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
 		return err
 	}
 
-	// Delete HTTP and HTTPS health checks in case both exist
-	// TODO: Update GLBC to create the newer compute.HealthCheck so we aren't straddling
-	// two types of health checks (legacy http & legacy https)
-	encryption := []bool{false, true}
-	for _, e := range encryption {
-		if err = b.healthChecker.Delete(port, e); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return b.healthChecker.Delete(port)
 }
 
 // List lists all backends.

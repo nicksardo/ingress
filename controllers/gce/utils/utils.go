@@ -327,3 +327,12 @@ func GetHTTPScheme(encrypted bool) string {
 // FakeIngressRuleValueMap is a convenience type used by multiple submodules
 // that share the same testing methods.
 type FakeIngressRuleValueMap map[string]string
+
+type AppProtocol string
+
+const (
+	// HTTP protocol for a service
+	HTTP AppProtocol = "HTTP"
+	// HTTPS protocol for a service
+	HTTPS AppProtocol = "HTTPS"
+)

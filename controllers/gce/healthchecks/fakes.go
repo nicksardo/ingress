@@ -28,20 +28,22 @@ func fakeNotFoundErr() *googleapi.Error {
 // NewFakeHealthCheckProvider returns a new FakeHealthChecks.
 func NewFakeHealthCheckProvider() *FakeHealthCheckProvider {
 	return &FakeHealthCheckProvider{
-		http:  make(map[string]compute.HttpHealthCheck),
-		https: make(map[string]compute.HttpsHealthCheck),
+		http:    make(map[string]compute.HttpHealthCheck),
+		generic: make(map[string]compute.HealthCheck),
 	}
 }
 
 // FakeHealthCheckProvider fakes out health checks.
 type FakeHealthCheckProvider struct {
-	http  map[string]compute.HttpHealthCheck
-	https map[string]compute.HttpsHealthCheck
+	http    map[string]compute.HttpHealthCheck
+	generic map[string]compute.HealthCheck
 }
 
 // CreateHttpHealthCheck fakes out http health check creation.
 func (f *FakeHealthCheckProvider) CreateHttpHealthCheck(hc *compute.HttpHealthCheck) error {
-	f.http[hc.Name] = *hc
+	v := *hc
+	v.SelfLink = "https://fake.google.com/compute/httpHealthChecks/" + hc.Name
+	f.http[hc.Name] = v
 	return nil
 }
 
@@ -74,37 +76,39 @@ func (f *FakeHealthCheckProvider) UpdateHttpHealthCheck(hc *compute.HttpHealthCh
 	return nil
 }
 
-// CreateHttpsHealthCheck fakes out http health check creation.
-func (f *FakeHealthCheckProvider) CreateHttpsHealthCheck(hc *compute.HttpsHealthCheck) error {
-	f.https[hc.Name] = *hc
+// CreateHealthCheck fakes out http health check creation.
+func (f *FakeHealthCheckProvider) CreateHealthCheck(hc *compute.HealthCheck) error {
+	v := *hc
+	v.SelfLink = "https://fake.google.com/compute/healthChecks/" + hc.Name
+	f.generic[hc.Name] = v
 	return nil
 }
 
-// GetHttpsHealthCheck fakes out getting a http health check from the cloud.
-func (f *FakeHealthCheckProvider) GetHttpsHealthCheck(name string) (*compute.HttpsHealthCheck, error) {
-	if hc, found := f.https[name]; found {
+// GetHealthCheck fakes out getting a http health check from the cloud.
+func (f *FakeHealthCheckProvider) GetHealthCheck(name string) (*compute.HealthCheck, error) {
+	if hc, found := f.generic[name]; found {
 		return &hc, nil
 	}
 
 	return nil, fakeNotFoundErr()
 }
 
-// DeleteHttpsHealthCheck fakes out deleting a http health check.
-func (f *FakeHealthCheckProvider) DeleteHttpsHealthCheck(name string) error {
-	if _, exists := f.https[name]; !exists {
+// DeleteHealthCheck fakes out deleting a http health check.
+func (f *FakeHealthCheckProvider) DeleteHealthCheck(name string) error {
+	if _, exists := f.generic[name]; !exists {
 		return fakeNotFoundErr()
 	}
 
-	delete(f.https, name)
+	delete(f.generic, name)
 	return nil
 }
 
-// UpdateHttpsHealthCheck sends the given health check as an update.
-func (f *FakeHealthCheckProvider) UpdateHttpsHealthCheck(hc *compute.HttpsHealthCheck) error {
-	if _, exists := f.https[hc.Name]; !exists {
+// UpdateHealthCheck sends the given health check as an update.
+func (f *FakeHealthCheckProvider) UpdateHealthCheck(hc *compute.HealthCheck) error {
+	if _, exists := f.generic[hc.Name]; !exists {
 		return fakeNotFoundErr()
 	}
 
-	f.https[hc.Name] = *hc
+	f.generic[hc.Name] = *hc
 	return nil
 }
