@@ -26,6 +26,7 @@ Table of Contents
 * [What GCE resources are shared between Ingresses?](#what-gce-resources-are-shared-between-ingresses)
 * [How do I debug a controller spin loop?](#host-do-i-debug-a-controller-spinloop)
 * [Creating an Internal Load Balancer without existing ingress](#creating-an-internal-load-balancer-without-existing-ingress)
+* [How do I have two ingresses share one static ip](#)
 
 
 ## How do I deploy an Ingress controller?
@@ -380,3 +381,9 @@ kubectl get nodes
 gcloud compute instance-groups unmanaged add-instances $GROUPNAME --zone {ZONE} --instances=A,B,C...
 ```
 You can now follow the GCP Console wizard for creating an internal load balancer and point to the `k8s-ig--{UID}` instance group.
+
+## How do two ingress objects share a static IP?
+You can have two ingress objects (one HTTP and one HTTPS) share a single static IP by using the same `kubernetes.io/ingress.global-static-ip-name` annotation value; however, be sure to set `kubernetes.io/ingress.allow-http: false` for the HTTPS ingress. By default an ingress resource with TLS will create both an HTTP and HTTPS front-end of forwarding-rules & target proxies.
+```
+
+```
