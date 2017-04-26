@@ -74,13 +74,13 @@ func (i *Instances) AddInstanceGroup(name string, port int64) ([]*compute.Instan
 		ig, _ := i.Get(name, zone)
 		var err error
 		if ig == nil {
-			glog.Infof("Creating instance group %v in zone %v", name, zone)
+			glog.Infof("Creating instance group %v/%v", zone, name)
 			ig, err = i.cloud.CreateInstanceGroup(name, zone)
 			if err != nil {
 				return nil, nil, err
 			}
 		} else {
-			glog.V(3).Infof("Instance group %v already exists in zone %v, adding port %d to it", name, zone, port)
+			glog.V(3).Infof("Instance group %v/%v already exists, adding port %d", zone, name, port)
 		}
 		defer i.snapshotter.Add(name, struct{}{})
 		namedPort, err = i.cloud.AddPortToInstanceGroup(ig, port)
@@ -107,7 +107,7 @@ func (i *Instances) DeleteInstanceGroup(name string) error {
 				errs = append(errs, err)
 			}
 		} else {
-			glog.Infof("Deleted instance group %v in zone %v", name, zone)
+			glog.Infof("Deleted instance group %v/%v", zone, name)
 		}
 	}
 	if len(errs) == 0 {
@@ -172,7 +172,7 @@ func (i *Instances) splitNodesByZone(names []string) map[string][]string {
 func (i *Instances) Add(groupName string, names []string) error {
 	errs := []error{}
 	for zone, nodeNames := range i.splitNodesByZone(names) {
-		glog.V(1).Infof("Adding nodes %v to %v in zone %v", nodeNames, groupName, zone)
+		glog.V(1).Infof("Adding nodes %v to %v/%v", nodeNames, zone, groupName)
 		if err := i.cloud.AddInstancesToInstanceGroup(groupName, zone, nodeNames); err != nil {
 			errs = append(errs, err)
 		}
@@ -187,7 +187,7 @@ func (i *Instances) Add(groupName string, names []string) error {
 func (i *Instances) Remove(groupName string, names []string) error {
 	errs := []error{}
 	for zone, nodeNames := range i.splitNodesByZone(names) {
-		glog.V(1).Infof("Adding nodes %v to %v in zone %v", nodeNames, groupName, zone)
+		glog.V(1).Infof("Adding nodes %v to %v/%v", nodeNames, zone, groupName)
 		if err := i.cloud.RemoveInstancesFromInstanceGroup(groupName, zone, nodeNames); err != nil {
 			errs = append(errs, err)
 		}
