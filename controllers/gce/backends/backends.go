@@ -375,6 +375,7 @@ func (b *Backends) GC(svcNodePorts []ServicePort) error {
 	for _, p := range svcNodePorts {
 		knownPorts.Insert(portKey(p.Port))
 	}
+	var portsToGC []int64
 	pool := b.snapshotter.Snapshot()
 	for port := range pool {
 		p, err := strconv.ParseUint(port, 10, 16)
@@ -385,11 +386,19 @@ func (b *Backends) GC(svcNodePorts []ServicePort) error {
 		if knownPorts.Has(portKey(nodePort)) || b.ignoredPorts.Has(portKey(nodePort)) {
 			continue
 		}
-		glog.V(3).Infof("GCing backend for port %v", p)
-		if err := b.Delete(nodePort); err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
-			return err
-		}
+		portsToGC = append(portsToGC, nodePort)
 	}
+
+	glog.V(3).Infof("Found %d backend services %v to GC", portsToGC)
+	for _, nodePort := range portsToGC {
+		glog.V(3).Infof("Skipping GCing backend service for port %v", nodePort)
+		// if err := b.Delete(nodePort); err != nil && !utils.IsHTTPErrorCode(err, http.StatusNotFound) {
+		// 	return err
+		// } else {
+		// 	glog.V(3).Infof("GCing complete for backend service port %v", nodePort)
+		// }
+	}
+
 	return nil
 }
 
