@@ -17,6 +17,7 @@ limitations under the License.
 package gce
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -34,6 +35,13 @@ import (
 	"k8s.io/kubernetes/pkg/cloudprovider"
 )
 
+func newInstancesMetricContext(request string) *metricContext {
+	return &metricContext{
+		start:      time.Now(),
+		attributes: []string{"instances_" + request, unusedMetricLabel, unusedMetricLabel},
+	}
+}
+
 // NodeAddresses is an implementation of Instances.NodeAddresses.
 func (gce *GCECloud) NodeAddresses(_ types.NodeName) ([]v1.NodeAddress, error) {
 	internalIP, err := metadata.Get("instance/network-interfaces/0/ip")
@@ -48,6 +56,20 @@ func (gce *GCECloud) NodeAddresses(_ types.NodeName) ([]v1.NodeAddress, error) {
 		{Type: v1.NodeInternalIP, Address: internalIP},
 		{Type: v1.NodeExternalIP, Address: externalIP},
 	}, nil
+}
+
+// This method will not be called from the node that is requesting this ID.
+// i.e. metadata service and other local methods cannot be used here
+func (gce *GCECloud) NodeAddressesByProviderID(providerID string) ([]v1.NodeAddress, error) {
+	return []v1.NodeAddress{}, errors.New("unimplemented")
+}
+
+// InstanceTypeByProviderID returns the cloudprovider instance type of the node
+// with the specified unique providerID This method will not be called from the
+// node that is requesting this ID. i.e. metadata service and other local
+// methods cannot be used here
+func (gce *GCECloud) InstanceTypeByProviderID(providerID string) (string, error) {
+	return "", errors.New("unimplemented")
 }
 
 // ExternalID returns the cloud provider ID of the node with the specified NodeName (deprecated).
@@ -140,15 +162,22 @@ func (gce *GCECloud) AddSSHKeyToAllInstances(user string, keyData []byte) error 
 					Value: &keyString,
 				})
 		}
-		op, err := gce.service.Projects.SetCommonInstanceMetadata(gce.projectID, project.CommonInstanceMetadata).Do()
+
+		mc := newInstancesMetricContext("add_ssh_key")
+		op, err := gce.service.Projects.SetCommonInstanceMetadata(
+			gce.projectID, project.CommonInstanceMetadata).Do()
+
 		if err != nil {
 			glog.Errorf("Could not Set Metadata: %v", err)
+			mc.Observe(err)
 			return false, nil
 		}
-		if err := gce.waitForGlobalOp(op); err != nil {
+
+		if err := gce.waitForGlobalOp(op, mc); err != nil {
 			glog.Errorf("Could not Set Metadata: %v", err)
 			return false, nil
 		}
+
 		glog.Infof("Successfully added sshKey to project metadata")
 		return true, nil
 	})
