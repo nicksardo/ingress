@@ -21,24 +21,23 @@ import "time"
 func newClustersMetricContext(request, zone string) *metricContext {
 	return &metricContext{
 		start:      time.Now(),
-		attributes: []string{"clusters" + request, unusedMetricLabel, zone},
+		attributes: []string{"clusters_" + request, unusedMetricLabel, zone},
 	}
 }
 
 func (gce *GCECloud) ListClusters() ([]string, error) {
-	mc := newClustersMetricContext("list", "")
 	allClusters := []string{}
 
 	for _, zone := range gce.managedZones {
 		clusters, err := gce.listClustersInZone(zone)
 		if err != nil {
-			return nil, mc.Observe(err)
+			return nil, err
 		}
 		// TODO: Scoping?  Do we need to qualify the cluster name?
 		allClusters = append(allClusters, clusters...)
 	}
 
-	return allClusters, mc.Observe(nil)
+	return allClusters, nil
 }
 
 func (gce *GCECloud) Master(clusterName string) (string, error) {
